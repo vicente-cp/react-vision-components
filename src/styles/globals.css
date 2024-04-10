@@ -17,14 +17,6 @@ html, #app, #app>div {
   height: 100%
 }
 
-section:nth-child(odd) {
-  background-color: #e9e9e9;
-}
-
-section:nth-child(even) {
-  background-color: #FFFFFF;
-}
-
 body {
   font-family: 'Proxima', sans-serif;
   color: var(--color-text);
