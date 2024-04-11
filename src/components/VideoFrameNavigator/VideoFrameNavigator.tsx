@@ -1,12 +1,15 @@
+'use client';
+
 import React, { useRef, useState, useEffect } from 'react';
-import { FaPlay, FaPause } from 'react-icons/fa';
+import { FaPlay, FaPause, FaVolumeMute, FaVolumeUp, FaExpand, FaCompress } from 'react-icons/fa';
+import ReactSlider from 'react-slider';
+import "../../styles/slider.css"
 
 interface VideoFrameNavigatorProps {
   src: string;
   width?: string;
   height?: string;
   aspectRatio?: string;
-
 }
 
 const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
@@ -16,13 +19,19 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
   aspectRatio = '16/9',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
+  const [isContainerHovered, setIsContainerHovered] = useState(false);
+  const [isProgressBarHovered, setIsProgressBarHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const animationRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -38,40 +47,85 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
         setProgress(value);
         setCurrentTime(value);
       }
-      animationRef.current = requestAnimationFrame(updateProgress);
     };
 
-    animationRef.current = requestAnimationFrame(updateProgress);
+    const intervalId = setInterval(updateProgress, 5); // Increased frequency (5ms interval)
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMouseEnter = () => {
+      setIsContainerHovered(true);
+    };
+
+    const handleMouseLeave = () => {
+      setIsContainerHovered(false);
+    };
+
+    const containerElement = containerRef.current;
+    if (containerElement) {
+      containerElement.addEventListener('mouseenter', handleMouseEnter);
+      containerElement.addEventListener('mouseleave', handleMouseLeave);
+    }
+
+    return () => {
+      if (containerElement) {
+        containerElement.removeEventListener('mouseenter', handleMouseEnter);
+        containerElement.removeEventListener('mouseleave', handleMouseLeave);
       }
     };
   }, []);
 
   useEffect(() => {
     const handleMouseEnter = () => {
-      setIsHovered(true);
+      setIsProgressBarHovered(true);
+      animationRef.current = window.requestAnimationFrame(animateProgressBar);
     };
 
     const handleMouseLeave = () => {
-      setIsHovered(false);
+      setIsProgressBarHovered(false);
+      if (!isDragging && animationRef.current) {
+        window.cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
     };
 
-    const controlsElement = controlsRef.current;
-    if (controlsElement) {
-      controlsElement.addEventListener('mouseenter', handleMouseEnter);
-      controlsElement.addEventListener('mouseleave', handleMouseLeave);
+    const progressBarElement = progressBarRef.current;
+    if (progressBarElement) {
+      progressBarElement.addEventListener('mouseenter', handleMouseEnter);
+      progressBarElement.addEventListener('mouseleave', handleMouseLeave);
     }
 
     return () => {
-      if (controlsElement) {
-        controlsElement.removeEventListener('mouseenter', handleMouseEnter);
-        controlsElement.removeEventListener('mouseleave', handleMouseLeave);
+      if (progressBarElement) {
+        progressBarElement.removeEventListener('mouseenter', handleMouseEnter);
+        progressBarElement.removeEventListener('mouseleave', handleMouseLeave);
       }
     };
-  }, []);
+  }, [isDragging]);
+
+  const animateProgressBar = (timestamp: number) => {
+    const startTime = animationRef.current || timestamp;
+    const elapsed = timestamp - startTime;
+    const progress = Math.min(elapsed / 1000, 1); // Limit progress to 1 second
+    const height = 4 + (8 - 4) * progress; // Interpolate height from 4px to 8px
+    const top = 8 - height; // Adjust top position to grow towards the top
+
+    const progressBarElement = progressBarRef.current;
+    if (progressBarElement) {
+      progressBarElement.style.height = `${height}px`;
+      progressBarElement.style.top = `${top}px`;
+    }
+
+    if (progress < 1 && (isProgressBarHovered || isDragging)) {
+      animationRef.current = window.requestAnimationFrame(animateProgressBar);
+    } else {
+      animationRef.current = null;
+    }
+  };
 
   const handlePlayPause = () => {
     if (videoRef.current) {
@@ -81,6 +135,13 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
         videoRef.current.play();
       }
       setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
     }
   };
 
@@ -95,9 +156,8 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
     }
   };
 
-  const handleProgressChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProgressChange = (value: number) => {
     if (videoRef.current) {
-      const value = parseFloat(event.target.value);
       videoRef.current.currentTime = value;
       setProgress(value);
     }
@@ -113,13 +173,66 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  return (
-    <div className="video-frame-navigator flex justify-center items-center">
+  const renderTrack = (props: any, state: any) => {
+    const played = (progress / duration) * 100;
+    const unplayed = 100 - played;
+    const progressBarHeight = isProgressBarHovered || isDragging ? 8 : 4;
+  
+    return (
       <div
-        className="video-container relative"
+        className="progress-track relative"
+        style={{
+          background: `linear-gradient(to right, #820000 0%, #820000 ${played}%, rgba(0, 0, 0, 0.5) ${played}%, rgba(0, 0, 0, 0.5) 100%)`,
+          height: `${progressBarHeight}px`,
+          transition: 'height .3s ease',
+          position: 'absolute',
+          top: isProgressBarHovered || isDragging ? 0 : `${4 - progressBarHeight}px`,
+          left: 0,
+          right: 0,
+        }}
+      >
+        {(isProgressBarHovered || isDragging) && (
+          <div className="absolute inset-0 bg-black bg-opacity-0 rounded-full" />
+        )}
+      </div>
+    );
+  };
+  const handleFullscreen = () => {
+    const containerElement = containerRef.current;
+    if (containerElement) {
+      if (!isFullscreen) {
+        if (containerElement.requestFullscreen) {
+          containerElement.requestFullscreen();
+        } else if (containerElement.webkitRequestFullscreen) {
+          containerElement.webkitRequestFullscreen();
+        } else if (containerElement.mozRequestFullScreen) {
+          containerElement.mozRequestFullScreen();
+        } else if (containerElement.msRequestFullscreen) {
+          containerElement.msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+      }
+      setIsFullscreen(!isFullscreen);
+    }
+  };
+
+  return (
+    <div className="video-frame-navigator flex justify-center items-center ">
+      <div
+        ref={containerRef}
+        className="video-container relative overflow-hidden shadow-lg "
         style={{ width, height, aspectRatio }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={() => setIsContainerHovered(true)}
+        onMouseLeave={() => setIsContainerHovered(false)}
       >
         <video
           ref={videoRef}
@@ -129,41 +242,56 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
           onEnded={handleVideoEnded}
         />
         <div
-          ref={controlsRef}
-          className={`controls absolute bottom-0 left-0 right-0 p-2 flex flex-col items-center justify-end transition-opacity duration-300 ${
-            isHovered ? 'opacity-100' : isPlaying ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
-          <input
-            type="range"
-            min={0}
-            max={duration}
-            step={0.01}
-            value={progress}
-            onChange={handleProgressChange}
-            className="w-full mb-2 transition-all duration-200"
-            style={{ transition: 'width 0.01s linear' }}
-          />
-          <div className="flex items-center justify-between w-full">
-            <button
-              className="bg-white rounded-full p-1 shadow-md transition-all duration-1000"
-              onClick={handlePlayPause}
-            >
+  ref={controlsRef}
+  className={`controls absolute bottom-0 left-0 right-0 flex flex-col items-center justify-end transition-opacity duration-300 ${
+    isContainerHovered ? 'opacity-100' : isPlaying ? 'opacity-0' : 'opacity-100'
+  }`}
+>
+  <div ref={progressBarRef} className="w-full relative">
+    <ReactSlider
+      className="progress-bar"
+      thumbClassName=""
+      renderTrack={renderTrack}
+      min={0}
+      max={duration}
+      value={progress}
+      onChange={handleProgressChange}
+      onDragStart={() => setIsDragging(true)}
+      onDragEnd={() => setIsDragging(false)}
+    />
+  </div>
+  <div
+    className="flex items-center justify-between w-full bg-black bg-opacity-30 px-2 py-1"
+  >
+            <button className="text-white mr-2" onClick={handlePlayPause}>
               {isPlaying ? (
-                <FaPause className="text-sm text-gray-800" />
+                <FaPause className="text-base" />
               ) : (
-                <FaPlay className="text-sm text-gray-800" />
+                <FaPlay className="text-base" />
               )}
             </button>
-            <div className="text-white ml-2 text-xs">
+            <button className="text-white mr-2" onClick={handleMute}>
+              {isMuted ? (
+                <FaVolumeMute className="text-base" />
+              ) : (
+                <FaVolumeUp className="text-base" />
+              )}
+            </button>
+            <div className="text-white text-sm">
               {formatTime(currentTime)} / {formatTime(duration)}
             </div>
             <button
-              className="bg-white rounded-full p-1 shadow-md transition-all duration-300 ml-auto text-xs"
+              className="text-white ml-auto text-sm"
               onClick={handleSpeedChange}
-              style={{ width: '40px' }}
             >
               {speed}x
+            </button>
+            <button className="text-white ml-2" onClick={handleFullscreen}>
+              {isFullscreen ? (
+                <FaCompress className="text-base" />
+              ) : (
+                <FaExpand className="text-base" />
+              )}
             </button>
           </div>
         </div>
