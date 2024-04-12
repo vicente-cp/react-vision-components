@@ -11,6 +11,8 @@
 
 public/fonts
 
+public/media/videos
+
 # next.js
 /.next/
 /out/

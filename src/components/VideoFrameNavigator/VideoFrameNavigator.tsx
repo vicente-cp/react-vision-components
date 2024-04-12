@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { FaPlay, FaPause, FaVolumeMute, FaVolumeUp, FaExpand, FaCompress } from 'react-icons/fa';
+import { Slider } from '@mui/material';
 
 interface VideoFrameNavigatorProps {
   src: string;
@@ -29,18 +30,20 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
   useEffect(() => {
     const videoElement = videoRef.current;
     if (videoElement) {
-      const handleVideoFrameCallback = (now: DOMHighResTimeStamp, metadata: VideoFrameMetadata) => {
-        setCurrentTime(metadata.mediaTime);
-        videoElement.requestVideoFrameCallback(handleVideoFrameCallback);
+      setDuration(videoElement.duration);
+
+      const handleTimeUpdate = () => {
+        setCurrentTime(videoElement.currentTime);
       };
 
-      videoElement.requestVideoFrameCallback(handleVideoFrameCallback);
+      videoElement.addEventListener('timeupdate', handleTimeUpdate);
 
       return () => {
-        videoElement.cancelVideoFrameCallback(handleVideoFrameCallback);
+        videoElement.removeEventListener('timeupdate', handleTimeUpdate);
       };
     }
   }, []);
+
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -146,6 +149,11 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
       setIsFullscreen(!isFullscreen);
     }
   };
+  const handleSeek = (event: any, newValue: number | number[]) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = newValue as number;
+    }
+  };
 
   return (
     <div className="video-frame-navigator flex justify-center items-center">
@@ -166,6 +174,16 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
             isControlsVisible ? 'opacity-100' : 'opacity-0'
           }`}
         >
+
+<div className="w-full px-2 py-1">
+            <Slider
+              value={currentTime}
+              min={0}
+              max={duration}
+              onChange={handleSeek}
+              aria-labelledby="seek-slider"
+            />
+          </div>
           <div className="flex items-center justify-between w-full px-2 py-1">
             <button
               className="text-white mr-2"
@@ -216,5 +234,4 @@ const VideoFrameNavigator: React.FC<VideoFrameNavigatorProps> = ({
     </div>
   );
 };
-
 export default VideoFrameNavigator;
